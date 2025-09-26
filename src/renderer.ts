@@ -31,3 +31,15 @@ import './index.css';
 console.log(
   '👋 This message is being logged by "renderer.ts", included via Vite',
 );
+
+document.addEventListener('DOMContentLoaded', () => {
+  const button = document.getElementById('create-overlay');
+  if (button) {
+    button.addEventListener('click', () => {
+      // Send message to main process to create new overlay
+      if (window.electronAPI) {
+        window.electronAPI.createOverlay();
+      }
+    });
+  }
+});
