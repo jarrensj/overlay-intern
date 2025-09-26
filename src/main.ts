@@ -91,13 +91,11 @@ const checkScreenCapturePermissions = async (): Promise<boolean> => {
   if (process.platform === 'darwin') {
     try {
       // Check if we have screen capture permissions
-      const hasPermission = systemPreferences.getMediaAccessStatus('screen');
-      console.log('Screen capture permission status:', hasPermission);
+      const hasPermission = systemPreferences.getMediaAccessStatus('screen' as any);
       
       if (hasPermission !== 'granted') {
-        // Request permission
-        const permission = await systemPreferences.askForMediaAccess('screen');
-        console.log('Screen capture permission request result:', permission);
+        // Request permission (cast to any to handle screen type)
+        const permission = await systemPreferences.askForMediaAccess('screen' as any);
         return permission;
       }
       return true;
@@ -112,9 +110,6 @@ const checkScreenCapturePermissions = async (): Promise<boolean> => {
 // Screen capture function - captures only the area under the overlay window
 const captureScreen = async (bounds: { x: number; y: number; width: number; height: number }) => {
   try {
-    console.log("=== CAPTURE DEBUG INFO ===");
-    console.log("Overlay window bounds:", bounds);
-    
     // Check permissions first
     const hasPermission = await checkScreenCapturePermissions();
     if (!hasPermission) {
@@ -124,9 +119,6 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
     // Get all displays and find which one contains the overlay
     const displays = screen.getAllDisplays();
     const primaryDisplay = screen.getPrimaryDisplay();
-    
-    console.log("All displays:", displays.map(d => ({ id: d.id, bounds: d.bounds, scaleFactor: d.scaleFactor })));
-    console.log("Primary display:", { bounds: primaryDisplay.bounds, scaleFactor: primaryDisplay.scaleFactor });
     
     // Find which display contains the overlay center point
     const overlayCenterX = bounds.x + bounds.width / 2;
@@ -143,22 +135,9 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
       }
     }
     
-    console.log("Target display for overlay:", { 
-      id: targetDisplay.id, 
-      bounds: targetDisplay.bounds, 
-      scaleFactor: targetDisplay.scaleFactor 
-    });
-    
     // Calculate coordinates relative to the target display
     const relativeX = bounds.x - targetDisplay.bounds.x;
     const relativeY = bounds.y - targetDisplay.bounds.y;
-    
-    console.log("Relative coordinates on target display:", { 
-      relativeX, 
-      relativeY, 
-      width: bounds.width, 
-      height: bounds.height 
-    });
     
     // Capture the target displays screen
     const sources = await desktopCapturer.getSources({
@@ -168,8 +147,6 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
         height: targetDisplay.bounds.height * targetDisplay.scaleFactor
       }
     });
-    
-    console.log("Available sources:", sources.map(s => ({ name: s.name, id: s.id })));
     
     // Find the source that matches our target display
     let targetSource = sources[0]; // fallback to first source
@@ -183,12 +160,9 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
       }
     }
     
-    console.log("Using source:", { name: targetSource.name, id: targetSource.id });
-    
     const fullScreenThumbnail = targetSource.thumbnail;
     if (fullScreenThumbnail && !fullScreenThumbnail.isEmpty()) {
       const thumbnailSize = fullScreenThumbnail.getSize();
-      console.log("Full screen thumbnail size:", thumbnailSize);
       
       // Calculate crop coordinates with proper scaling
       const cropX = Math.max(0, Math.floor(relativeX * targetDisplay.scaleFactor));
@@ -201,8 +175,6 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
         Math.floor(bounds.height * targetDisplay.scaleFactor), 
         thumbnailSize.height - cropY
       );
-      
-      console.log("Crop parameters:", { cropX, cropY, cropWidth, cropHeight });
       
       // Validate crop parameters
       if (cropWidth <= 0 || cropHeight <= 0) {
@@ -222,12 +194,6 @@ const captureScreen = async (bounds: { x: number; y: number; width: number; heig
       
       if (croppedThumbnail && !croppedThumbnail.isEmpty()) {
         const dataUrl = croppedThumbnail.toDataURL();
-        console.log("Successfully captured cropped screenshot:", {
-          originalSize: thumbnailSize,
-          croppedSize: croppedThumbnail.getSize(),
-          dataUrlLength: dataUrl.length
-        });
-        console.log("=== END CAPTURE DEBUG ===");
         return dataUrl;
       } else {
         throw new Error("Cropped thumbnail is empty");
@@ -255,13 +221,11 @@ const compareScreenshots = (screenshot1: string, screenshot2: string): boolean =
   
   // If size difference is less than 1%, likely just compression/anti-aliasing differences
   if (sizeDiffPercent < 0.01) {
-    console.log(`Screenshot size difference too small to be significant: ${sizeDiffPercent * 100}%`);
     return false;
   }
   
   // For more significant differences, we can add additional checks here
   // For now, if size difference is >= 1%, consider it a real change
-  console.log(`Screenshot size difference detected: ${sizeDiffPercent * 100}%`);
   return true;
 };
 
@@ -274,9 +238,7 @@ app.on('ready', () => {
   // Request screen capture permissions on startup for macOS
   if (process.platform === 'darwin') {
     setTimeout(() => {
-      checkScreenCapturePermissions().then(hasPermission => {
-        console.log('Screen capture permissions on startup:', hasPermission);
-      });
+      checkScreenCapturePermissions();
     }, 1000);
   }
 });
@@ -312,11 +274,8 @@ ipcMain.handle('start-watching', async (event, bounds) => {
   }
 
   try {
-    console.log('Starting screen watching with bounds:', bounds);
-    
     // Use the monitoring area bounds for initial capture too
     const initialBounds = bounds; // This should already be monitoring area bounds from the UI
-    console.log('Using monitoring area bounds for initial capture:', initialBounds);
     
     // Capture initial baseline screenshot
     baselineScreenshot = await captureScreen(initialBounds);
@@ -361,8 +320,6 @@ ipcMain.handle('start-watching', async (event, bounds) => {
                 width: windowBounds.width,
                 height: Math.max(50, windowBounds.height - controlPanelHeight)
               };
-              
-              console.log('Recalculated monitoring bounds - window:', windowBounds, 'controlHeight:', controlPanelHeight, 'monitoring:', currentBounds);
             } else {
               throw new Error('WebContents not ready');
             }
@@ -376,7 +333,6 @@ ipcMain.handle('start-watching', async (event, bounds) => {
               width: windowBounds.width,
               height: Math.max(50, windowBounds.height - fallbackControlHeight)
             };
-            console.log('Using fallback monitoring bounds:', currentBounds);
           }
         }
         
@@ -437,7 +393,6 @@ ipcMain.handle('check-screen-permissions', async () => {
 
 ipcMain.handle('debug-capture-area', async (event, bounds) => {
   try {
-    console.log('=== DEBUG CAPTURE AREA ===');
     const screenshot = await captureScreen(bounds);
     
     // Save the captured area as a file for inspection
@@ -452,8 +407,6 @@ ipcMain.handle('debug-capture-area', async (event, bounds) => {
     // Save to desktop for easy access
     const desktopPath = path.join(os.homedir(), 'Desktop', 'overlay_capture_debug.png');
     fs.writeFileSync(desktopPath, buffer);
-    
-    console.log('Debug capture saved to:', desktopPath);
     
     return { 
       success: true, 
@@ -471,7 +424,6 @@ ipcMain.handle('debug-capture-area', async (event, bounds) => {
 });
 
 ipcMain.handle('get-monitoring-area-bounds', async (event) => {
-  console.log("get-monitoring-area-bounds called");
   
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     const windowBounds = overlayWindow.getBounds();
@@ -495,19 +447,12 @@ ipcMain.handle('get-monitoring-area-bounds', async (event) => {
           })();
         `);
         
-        console.log('=== MONITORING BOUNDS CALCULATION ===');
-        console.log('Window bounds:', windowBounds);
-        console.log('Control panel height:', controlPanelHeight);
-        
         const monitoringBounds = {
           x: windowBounds.x,
           y: windowBounds.y,
           width: windowBounds.width,
           height: Math.max(50, windowBounds.height - controlPanelHeight)
         };
-        
-        console.log('Calculated monitoring bounds:', monitoringBounds);
-        console.log('=== END MONITORING BOUNDS CALCULATION ===');
         
         return monitoringBounds;
       } else {
@@ -523,7 +468,6 @@ ipcMain.handle('get-monitoring-area-bounds', async (event) => {
         width: windowBounds.width,
         height: Math.max(50, windowBounds.height - fallbackControlHeight)
       };
-      console.log('Using fallback monitoring bounds:', monitoringBounds);
       return monitoringBounds;
     }
   }
