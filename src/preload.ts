@@ -19,5 +19,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   removeScreenChangeListener: () => {
     ipcRenderer.removeAllListeners('screen-change-detected');
+  },
+  onMonitoringAutoStopped: (callback: any) => {
+    ipcRenderer.on('monitoring-auto-stopped', callback);
+  },
+  removeMonitoringAutoStoppedListener: () => {
+    ipcRenderer.removeAllListeners('monitoring-auto-stopped');
   }
 });

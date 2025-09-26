@@ -406,6 +406,29 @@
                 }, 2000);
               }
             });
+
+            // Listen for auto-stop events (when window is moved/resized)
+            window.electronAPI.onMonitoringAutoStopped((event, data) => {
+              // Update monitoring state
+              isWatching = false;
+              startTime = null;
+              
+              // Update UI to stopped state
+              startButton.style.display = 'inline-block';
+              stopButton.style.display = 'none';
+              statusElement.textContent = `Monitoring stopped: ${data.reason}. Reposition and click Start to resume.`;
+              changeIndicatorElement.textContent = 'Ready to watch';
+              changeIndicatorElement.className = 'change-indicator';
+              
+              // Stop timer
+              if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+              }
+              
+              // Clear any change indicators
+              clearChangeIndicators();
+            });
             
           } else {
             statusElement.textContent = `Error: ${result.message}`;
@@ -440,8 +463,9 @@
               timerInterval = null;
             }
             
-            // Remove screen change listener
+            // Remove event listeners
             window.electronAPI.removeScreenChangeListener();
+            window.electronAPI.removeMonitoringAutoStoppedListener();
             
           } else {
             statusElement.textContent = `Error: ${result.message}`;
@@ -478,6 +502,7 @@
           clearInterval(timerInterval);
         }
         window.electronAPI.removeScreenChangeListener();
+        window.electronAPI.removeMonitoringAutoStoppedListener();
       });
     </script>
   </body>

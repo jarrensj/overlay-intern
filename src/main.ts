@@ -83,6 +83,29 @@ const createOverlayWindow = () => {
     baselineScreenshot = null;
   });
 
+  // Auto-stop monitoring when window is moved or resized
+  const stopMonitoringOnChange = () => {
+    if (isWatching) {
+      // Stop watching
+      if (watchingInterval) {
+        clearInterval(watchingInterval);
+        watchingInterval = null;
+      }
+      isWatching = false;
+      baselineScreenshot = null;
+      
+      // Notify the renderer process to update UI
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('monitoring-auto-stopped', {
+          reason: 'Window moved or resized'
+        });
+      }
+    }
+  };
+
+  overlayWindow.on('moved', stopMonitoringOnChange);
+  overlayWindow.on('resized', stopMonitoringOnChange);
+
   return overlayWindow;
 };
 
