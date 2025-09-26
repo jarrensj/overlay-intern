@@ -109,57 +109,160 @@ const checkScreenCapturePermissions = async (): Promise<boolean> => {
   return true; // Assume granted on other platforms
 };
 
-// Screen capture function
+// Screen capture function - captures only the area under the overlay window
 const captureScreen = async (bounds: { x: number; y: number; width: number; height: number }) => {
   try {
-    console.log('Attempting to capture screen with bounds:', bounds);
+    console.log("=== CAPTURE DEBUG INFO ===");
+    console.log("Overlay window bounds:", bounds);
     
     // Check permissions first
     const hasPermission = await checkScreenCapturePermissions();
     if (!hasPermission) {
-      throw new Error('Screen capture permission not granted');
+      throw new Error("Screen capture permission not granted");
     }
     
+    // Get all displays and find which one contains the overlay
+    const displays = screen.getAllDisplays();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    
+    console.log("All displays:", displays.map(d => ({ id: d.id, bounds: d.bounds, scaleFactor: d.scaleFactor })));
+    console.log("Primary display:", { bounds: primaryDisplay.bounds, scaleFactor: primaryDisplay.scaleFactor });
+    
+    // Find which display contains the overlay center point
+    const overlayCenterX = bounds.x + bounds.width / 2;
+    const overlayCenterY = bounds.y + bounds.height / 2;
+    
+    let targetDisplay = primaryDisplay;
+    for (const display of displays) {
+      if (overlayCenterX >= display.bounds.x && 
+          overlayCenterX < display.bounds.x + display.bounds.width &&
+          overlayCenterY >= display.bounds.y && 
+          overlayCenterY < display.bounds.y + display.bounds.height) {
+        targetDisplay = display;
+        break;
+      }
+    }
+    
+    console.log("Target display for overlay:", { 
+      id: targetDisplay.id, 
+      bounds: targetDisplay.bounds, 
+      scaleFactor: targetDisplay.scaleFactor 
+    });
+    
+    // Calculate coordinates relative to the target display
+    const relativeX = bounds.x - targetDisplay.bounds.x;
+    const relativeY = bounds.y - targetDisplay.bounds.y;
+    
+    console.log("Relative coordinates on target display:", { 
+      relativeX, 
+      relativeY, 
+      width: bounds.width, 
+      height: bounds.height 
+    });
+    
+    // Capture the target displays screen
     const sources = await desktopCapturer.getSources({
-      types: ['screen'],
+      types: ["screen"],
       thumbnailSize: {
-        width: Math.max(bounds.width, 100),
-        height: Math.max(bounds.height, 100)
+        width: targetDisplay.bounds.width * targetDisplay.scaleFactor,
+        height: targetDisplay.bounds.height * targetDisplay.scaleFactor
       }
     });
     
-    console.log('Desktop capturer sources:', sources.length);
+    console.log("Available sources:", sources.map(s => ({ name: s.name, id: s.id })));
     
-    if (sources.length > 0) {
-      // Get the primary display source
-      const primarySource = sources[0];
-      console.log('Primary source:', primarySource.name, primarySource.id);
+    // Find the source that matches our target display
+    let targetSource = sources[0]; // fallback to first source
+    
+    // Try to find the source by display ID or name
+    for (const source of sources) {
+      if (source.display_id === targetDisplay.id.toString() || 
+          source.name.includes(targetDisplay.id.toString())) {
+        targetSource = source;
+        break;
+      }
+    }
+    
+    console.log("Using source:", { name: targetSource.name, id: targetSource.id });
+    
+    const fullScreenThumbnail = targetSource.thumbnail;
+    if (fullScreenThumbnail && !fullScreenThumbnail.isEmpty()) {
+      const thumbnailSize = fullScreenThumbnail.getSize();
+      console.log("Full screen thumbnail size:", thumbnailSize);
       
-      const thumbnail = primarySource.thumbnail;
-      if (thumbnail && !thumbnail.isEmpty()) {
-        const dataUrl = thumbnail.toDataURL();
-        console.log('Successfully captured screenshot, size:', dataUrl.length);
+      // Calculate crop coordinates with proper scaling
+      const cropX = Math.max(0, Math.floor(relativeX * targetDisplay.scaleFactor));
+      const cropY = Math.max(0, Math.floor(relativeY * targetDisplay.scaleFactor));
+      const cropWidth = Math.min(
+        Math.floor(bounds.width * targetDisplay.scaleFactor), 
+        thumbnailSize.width - cropX
+      );
+      const cropHeight = Math.min(
+        Math.floor(bounds.height * targetDisplay.scaleFactor), 
+        thumbnailSize.height - cropY
+      );
+      
+      console.log("Crop parameters:", { cropX, cropY, cropWidth, cropHeight });
+      
+      // Validate crop parameters
+      if (cropWidth <= 0 || cropHeight <= 0) {
+        throw new Error(`Invalid crop dimensions: ${cropWidth}x${cropHeight}`);
+      }
+      
+      if (cropX + cropWidth > thumbnailSize.width || cropY + cropHeight > thumbnailSize.height) {
+        throw new Error(`Crop area exceeds thumbnail bounds`);
+      }
+      
+      const croppedThumbnail = fullScreenThumbnail.crop({
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight
+      });
+      
+      if (croppedThumbnail && !croppedThumbnail.isEmpty()) {
+        const dataUrl = croppedThumbnail.toDataURL();
+        console.log("Successfully captured cropped screenshot:", {
+          originalSize: thumbnailSize,
+          croppedSize: croppedThumbnail.getSize(),
+          dataUrlLength: dataUrl.length
+        });
+        console.log("=== END CAPTURE DEBUG ===");
         return dataUrl;
       } else {
-        throw new Error('Thumbnail is empty');
+        throw new Error("Cropped thumbnail is empty");
       }
     } else {
-      throw new Error('No screen sources available');
+      throw new Error("Full screen thumbnail is empty");
     }
   } catch (error) {
-    console.error('Error capturing screen:', error);
+    console.error("Error capturing screen area:", error);
     throw error;
   }
-};
-
-// Compare two screenshots (simple pixel difference)
+};// Compare two screenshots with tolerance for minor differences
 const compareScreenshots = (screenshot1: string, screenshot2: string): boolean => {
-  // Simple comparison - in a real implementation you might want more sophisticated comparison
   if (!screenshot1 || !screenshot2) return false;
   
-  // For now, just compare the data URLs directly
-  // In a more sophisticated implementation, you could decode the images and compare pixels
-  return screenshot1 !== screenshot2;
+  // If screenshots are identical, no change
+  if (screenshot1 === screenshot2) return false;
+  
+  // Check if the difference in data size is significant
+  // Minor compression differences shouldn't trigger change detection
+  const size1 = screenshot1.length;
+  const size2 = screenshot2.length;
+  const sizeDiff = Math.abs(size1 - size2);
+  const sizeDiffPercent = sizeDiff / Math.max(size1, size2);
+  
+  // If size difference is less than 1%, likely just compression/anti-aliasing differences
+  if (sizeDiffPercent < 0.01) {
+    console.log(`Screenshot size difference too small to be significant: ${sizeDiffPercent * 100}%`);
+    return false;
+  }
+  
+  // For more significant differences, we can add additional checks here
+  // For now, if size difference is >= 1%, consider it a real change
+  console.log(`Screenshot size difference detected: ${sizeDiffPercent * 100}%`);
+  return true;
 };
 
 // This method will be called when Electron has finished
@@ -211,8 +314,12 @@ ipcMain.handle('start-watching', async (event, bounds) => {
   try {
     console.log('Starting screen watching with bounds:', bounds);
     
+    // Use the monitoring area bounds for initial capture too
+    const initialBounds = bounds; // This should already be monitoring area bounds from the UI
+    console.log('Using monitoring area bounds for initial capture:', initialBounds);
+    
     // Capture initial baseline screenshot
-    baselineScreenshot = await captureScreen(bounds);
+    baselineScreenshot = await captureScreen(initialBounds);
     if (!baselineScreenshot) {
       return { success: false, message: 'Failed to capture initial screenshot' };
     }
@@ -222,7 +329,58 @@ ipcMain.handle('start-watching', async (event, bounds) => {
     // Start watching interval (check every 2 seconds to be less intensive)
     watchingInterval = setInterval(async () => {
       try {
-        const currentScreenshot = await captureScreen(bounds);
+        // Recalculate monitoring area bounds on each capture (handles window resize)
+        // Use the same logic as get-monitoring-area-bounds handler
+        let currentBounds = bounds; // fallback to original bounds
+        
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          const windowBounds = overlayWindow.getBounds();
+          
+          try {
+            // Check if webContents is ready before executing JavaScript
+            if (overlayWindow.webContents && !overlayWindow.webContents.isDestroyed()) {
+              // Get actual control panel height from the DOM with better error handling
+              const controlPanelHeight = await overlayWindow.webContents.executeJavaScript(`
+                (function() {
+                  try {
+                    const controlPanel = document.querySelector('.control-panel');
+                    if (controlPanel && controlPanel.offsetHeight > 0) {
+                      return controlPanel.offsetHeight;
+                    }
+                    return 142; // Default fallback height
+                  } catch (e) {
+                    console.error('Error in control panel height script:', e);
+                    return 142;
+                  }
+                })();
+              `);
+              
+              currentBounds = {
+                x: windowBounds.x,
+                y: windowBounds.y,
+                width: windowBounds.width,
+                height: Math.max(50, windowBounds.height - controlPanelHeight)
+              };
+              
+              console.log('Recalculated monitoring bounds - window:', windowBounds, 'controlHeight:', controlPanelHeight, 'monitoring:', currentBounds);
+            } else {
+              throw new Error('WebContents not ready');
+            }
+          } catch (error) {
+            console.error('Error getting control panel height during interval, using fallback:', error);
+            // Fallback to hardcoded height - calculate monitoring area properly
+            const fallbackControlHeight = 142; // Based on your initial calculation
+            currentBounds = {
+              x: windowBounds.x,
+              y: windowBounds.y,
+              width: windowBounds.width,
+              height: Math.max(50, windowBounds.height - fallbackControlHeight)
+            };
+            console.log('Using fallback monitoring bounds:', currentBounds);
+          }
+        }
+        
+        const currentScreenshot = await captureScreen(currentBounds);
         if (currentScreenshot && baselineScreenshot) {
           const hasChanged = compareScreenshots(baselineScreenshot, currentScreenshot);
           
@@ -230,7 +388,8 @@ ipcMain.handle('start-watching', async (event, bounds) => {
           if (overlayWindow && !overlayWindow.isDestroyed()) {
             overlayWindow.webContents.send('screen-change-detected', {
               hasChanged,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              bounds: currentBounds // Include the monitoring bounds
             });
           }
           
@@ -274,4 +433,99 @@ ipcMain.handle('get-overlay-bounds', () => {
 ipcMain.handle('check-screen-permissions', async () => {
   const hasPermission = await checkScreenCapturePermissions();
   return { hasPermission };
+});
+
+ipcMain.handle('debug-capture-area', async (event, bounds) => {
+  try {
+    console.log('=== DEBUG CAPTURE AREA ===');
+    const screenshot = await captureScreen(bounds);
+    
+    // Save the captured area as a file for inspection
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    
+    // Convert base64 data URL to buffer
+    const base64Data = screenshot.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    // Save to desktop for easy access
+    const desktopPath = path.join(os.homedir(), 'Desktop', 'overlay_capture_debug.png');
+    fs.writeFileSync(desktopPath, buffer);
+    
+    console.log('Debug capture saved to:', desktopPath);
+    
+    return { 
+      success: true, 
+      message: `Debug capture saved to ${desktopPath}`,
+      imagePath: desktopPath,
+      imageSize: buffer.length
+    };
+  } catch (error) {
+    console.error('Error in debug capture:', error);
+    return { 
+      success: false, 
+      message: `Debug capture failed: ${error.message}` 
+    };
+  }
+});
+
+ipcMain.handle('get-monitoring-area-bounds', async (event) => {
+  console.log("get-monitoring-area-bounds called");
+  
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const windowBounds = overlayWindow.getBounds();
+    
+    try {
+      // Check if webContents is ready before executing JavaScript
+      if (overlayWindow.webContents && !overlayWindow.webContents.isDestroyed()) {
+        // Get actual control panel height from the DOM with better error handling
+        const controlPanelHeight = await overlayWindow.webContents.executeJavaScript(`
+          (function() {
+            try {
+              const controlPanel = document.querySelector('.control-panel');
+              if (controlPanel && controlPanel.offsetHeight > 0) {
+                return controlPanel.offsetHeight;
+              }
+              return 142; // Default fallback height
+            } catch (e) {
+              console.error('Error in control panel height script:', e);
+              return 142;
+            }
+          })();
+        `);
+        
+        console.log('=== MONITORING BOUNDS CALCULATION ===');
+        console.log('Window bounds:', windowBounds);
+        console.log('Control panel height:', controlPanelHeight);
+        
+        const monitoringBounds = {
+          x: windowBounds.x,
+          y: windowBounds.y,
+          width: windowBounds.width,
+          height: Math.max(50, windowBounds.height - controlPanelHeight)
+        };
+        
+        console.log('Calculated monitoring bounds:', monitoringBounds);
+        console.log('=== END MONITORING BOUNDS CALCULATION ===');
+        
+        return monitoringBounds;
+      } else {
+        throw new Error('WebContents not ready');
+      }
+    } catch (error) {
+      console.error('Error getting control panel height, using fallback:', error);
+      // Fallback to hardcoded height - calculate monitoring area properly
+      const fallbackControlHeight = 142;
+      const monitoringBounds = {
+        x: windowBounds.x,
+        y: windowBounds.y,
+        width: windowBounds.width,
+        height: Math.max(50, windowBounds.height - fallbackControlHeight)
+      };
+      console.log('Using fallback monitoring bounds:', monitoringBounds);
+      return monitoringBounds;
+    }
+  }
+  return null;
 });

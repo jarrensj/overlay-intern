@@ -11,7 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopWatching: () => ipcRenderer.invoke('stop-watching'),
   getWatchingStatus: () => ipcRenderer.invoke('get-watching-status'),
   getOverlayBounds: () => ipcRenderer.invoke('get-overlay-bounds'),
+  getMonitoringAreaBounds: () => ipcRenderer.invoke('get-monitoring-area-bounds'),
   checkScreenPermissions: () => ipcRenderer.invoke('check-screen-permissions'),
+  debugCaptureArea: (bounds: any) => ipcRenderer.invoke('debug-capture-area', bounds),
   onScreenChangeDetected: (callback: any) => {
     ipcRenderer.on('screen-change-detected', callback);
   },

@@ -7,23 +7,89 @@
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         margin: 0;
-        padding: 20px;
-        background: rgba(0, 0, 0, 0.7);
+        padding: 0;
+        background: transparent;
         color: white;
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-        -webkit-app-region: drag;
         user-select: none;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      .monitoring-area {
+        flex: 1;
+        background: rgba(255, 0, 0, 0.1);
+        border: 2px dashed rgba(255, 0, 0, 0.8);
+        position: relative;
+        min-height: 150px;
+        -webkit-app-region: drag;
+      }
+
+      .monitoring-area::before {
+        content: "MONITORING AREA";
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        font-size: 10px;
+        color: rgba(255, 0, 0, 0.8);
+        background: rgba(0, 0, 0, 0.5);
+        padding: 2px 5px;
+        border-radius: 3px;
+        pointer-events: none;
+      }
+
+      .bounds-display {
+        position: absolute;
+        top: 25px;
+        left: 5px;
+        font-size: 9px;
+        color: rgba(255, 255, 0, 0.9);
+        background: rgba(0, 0, 0, 0.7);
+        padding: 3px 6px;
+        border-radius: 3px;
+        pointer-events: none;
+        font-family: monospace;
+        line-height: 1.2;
+      }
+
+      .change-location {
+        position: absolute;
+        background: rgba(255, 0, 255, 0.8);
+        color: white;
+        font-size: 8px;
+        padding: 2px 4px;
+        border-radius: 2px;
+        pointer-events: none;
+        font-family: monospace;
+        border: 1px solid rgba(255, 0, 255, 1);
+        animation: pulse 1s infinite;
+      }
+
+      @keyframes pulse {
+        0% { opacity: 0.8; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.05); }
+        100% { opacity: 0.8; transform: scale(1); }
+      }
+
+      .control-panel {
+        background: rgba(0, 0, 0, 0.9);
+        padding: 10px;
+        border-top: 2px solid rgba(255, 255, 255, 0.3);
+        -webkit-app-region: no-drag;
+        min-height: 120px;
       }
       
       button {
         background: rgba(255, 0, 0, 0.8);
         border: 1px solid rgba(255, 255, 255, 0.3);
         color: white;
-        padding: 10px 20px;
+        padding: 8px 12px;
         border-radius: 5px;
         cursor: pointer;
-        font-size: 14px;
-        margin: 5px;
+        font-size: 12px;
+        margin: 2px;
         -webkit-app-region: no-drag;
       }
       
@@ -45,25 +111,37 @@
       }
 
       .timer {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
-        margin: 10px 0;
+        margin: 5px 0;
         color: #00ff00;
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
       }
 
       .status {
-        font-size: 12px;
-        margin: 5px 0;
+        font-size: 11px;
+        margin: 3px 0;
         color: #ffff00;
       }
 
       .change-indicator {
-        font-size: 12px;
-        margin: 5px 0;
-        padding: 5px;
+        font-size: 11px;
+        margin: 3px 0;
+        padding: 3px;
         border-radius: 3px;
         background: rgba(0, 0, 0, 0.3);
+      }
+
+      .control-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 5px 0;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 5px;
       }
 
       .change-detected {
@@ -79,16 +157,38 @@
     </style>
   </head>
   <body>
-    <h2>Watch Overlay</h2>
-    <p>Drag this over the area you want to watch</p>
+    <!-- Monitoring Area - This is what gets captured -->
+    <div class="monitoring-area" id="monitoring-area">
+      <!-- This area is transparent and shows what's being monitored -->
+      <div class="bounds-display" id="bounds-display">
+        X: --- Y: ---<br>
+        W: --- H: ---
+      </div>
+    </div>
     
-    <div class="timer" id="timer">00:00:00</div>
-    <div class="status" id="status">Ready to watch</div>
-    <div class="change-indicator" id="change-indicator">No changes detected</div>
-    
-    <button id="check-permissions" style="background: rgba(0, 100, 255, 0.8);">Check Permissions</button>
-    <button id="start-watching">Start Watching</button>
-    <button id="stop-watching" class="stop" style="display: none;">Stop Watching</button>
+    <!-- Control Panel - UI elements outside monitoring area -->
+    <div class="control-panel">
+      <div class="control-row">
+        <div>
+          <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">Screen Area Monitor</div>
+          <div class="timer" id="timer">00:00:00</div>
+        </div>
+        <div class="button-group">
+          <button id="start-watching">Start</button>
+          <button id="stop-watching" class="stop" style="display: none;">Stop</button>
+        </div>
+      </div>
+      
+      <div class="control-row">
+        <div class="status" id="status">Position red area over target to monitor</div>
+        <div class="button-group">
+          <button id="check-permissions" style="background: rgba(0, 100, 255, 0.8);">Permissions</button>
+          <button id="debug-capture" style="background: rgba(255, 165, 0, 0.8);">Debug</button>
+        </div>
+      </div>
+      
+      <div class="change-indicator" id="change-indicator">No changes detected</div>
+    </div>
     
     <script>
       let isWatching = false;
@@ -97,11 +197,14 @@
       let changeCount = 0;
 
       const checkPermissionsButton = document.getElementById('check-permissions');
+      const debugCaptureButton = document.getElementById('debug-capture');
       const startButton = document.getElementById('start-watching');
       const stopButton = document.getElementById('stop-watching');
       const timerElement = document.getElementById('timer');
       const statusElement = document.getElementById('status');
       const changeIndicatorElement = document.getElementById('change-indicator');
+      const boundsDisplayElement = document.getElementById('bounds-display');
+      const monitoringAreaElement = document.getElementById('monitoring-area');
 
       // Format time as HH:MM:SS
       function formatTime(seconds) {
@@ -117,6 +220,53 @@
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
           timerElement.textContent = formatTime(elapsed);
         }
+      }
+
+      // Update bounds display
+      async function updateBoundsDisplay() {
+        try {
+          const monitoringBounds = await window.electronAPI.getMonitoringAreaBounds();
+          if (monitoringBounds) {
+            boundsDisplayElement.innerHTML = 
+              `X: ${monitoringBounds.x} Y: ${monitoringBounds.y}<br>` +
+              `W: ${monitoringBounds.width} H: ${monitoringBounds.height}`;
+          }
+        } catch (error) {
+          console.error('Error updating bounds display:', error);
+        }
+      }
+
+      // Clear change location indicators
+      function clearChangeIndicators() {
+        const existingIndicators = document.querySelectorAll('.change-location');
+        existingIndicators.forEach(indicator => indicator.remove());
+      }
+
+      // Show change location indicator
+      function showChangeLocation(bounds) {
+        clearChangeIndicators();
+        
+        const indicator = document.createElement('div');
+        indicator.className = 'change-location';
+        indicator.innerHTML = `CHANGE<br>${bounds.x},${bounds.y}`;
+        
+        // Position the indicator next to the change indicator element in the control panel
+        indicator.style.position = 'absolute';
+        indicator.style.right = '10px';
+        indicator.style.top = '50%';
+        indicator.style.transform = 'translateY(-50%)';
+        indicator.style.zIndex = '1000';
+        
+        // Add to the change indicator's parent (control panel area)
+        changeIndicatorElement.parentElement.style.position = 'relative';
+        changeIndicatorElement.parentElement.appendChild(indicator);
+        
+        // Remove indicator after 3 seconds
+        setTimeout(() => {
+          if (indicator.parentNode) {
+            indicator.remove();
+          }
+        }, 3000);
       }
 
       // Check permissions
@@ -140,6 +290,47 @@
         }
       });
 
+      // Debug capture area
+      debugCaptureButton.addEventListener('click', async () => {
+        try {
+          statusElement.textContent = 'Capturing debug image...';
+          
+          const fullBounds = await window.electronAPI.getOverlayBounds();
+          const monitoringBounds = await window.electronAPI.getMonitoringAreaBounds();
+          
+          console.log('Full overlay bounds:', fullBounds);
+          console.log('Monitoring area bounds:', monitoringBounds);
+          
+          if (!monitoringBounds) {
+            statusElement.textContent = 'Error: Could not get monitoring area bounds';
+            return;
+          }
+
+          const bounds = monitoringBounds;
+          
+          const result = await window.electronAPI.debugCaptureArea(bounds);
+          
+          if (result.success) {
+            statusElement.textContent = `Debug image saved! Check your Desktop for overlay_capture_debug.png`;
+            changeIndicatorElement.textContent = `Bounds: ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height} | Size: ${result.imageSize} bytes`;
+            changeIndicatorElement.className = 'change-indicator no-change';
+            
+            // Reset status after 5 seconds
+            setTimeout(() => {
+              statusElement.textContent = 'Ready to watch';
+              changeIndicatorElement.textContent = 'No changes detected';
+            }, 5000);
+          } else {
+            statusElement.textContent = `Debug capture failed: ${result.message}`;
+            changeIndicatorElement.textContent = 'Debug capture error';
+            changeIndicatorElement.className = 'change-indicator change-detected';
+          }
+        } catch (error) {
+          console.error('Error in debug capture:', error);
+          statusElement.textContent = 'Error during debug capture';
+        }
+      });
+
       // Start watching
       startButton.addEventListener('click', async () => {
         if (isWatching) return;
@@ -154,15 +345,23 @@
             return;
           }
 
-          // Get current overlay bounds
-          statusElement.textContent = 'Getting overlay bounds...';
-          const bounds = await window.electronAPI.getOverlayBounds();
-          if (!bounds) {
+          // Get monitoring area bounds (excluding control panel)
+          statusElement.textContent = 'Getting monitoring area bounds...';
+          
+          const fullBounds = await window.electronAPI.getOverlayBounds();
+          const monitoringBounds = await window.electronAPI.getMonitoringAreaBounds();
+          
+          console.log('Full overlay bounds:', fullBounds);
+          console.log('Monitoring area bounds:', monitoringBounds);
+          
+          if (!monitoringBounds) {
             statusElement.textContent = 'Error: Could not get overlay bounds';
             return;
           }
 
-          statusElement.textContent = 'Starting screen capture...';
+          const bounds = monitoringBounds;
+          console.log('Starting watching with bounds:', bounds);
+          statusElement.textContent = `Starting capture of area: ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`;
           const result = await window.electronAPI.startWatching(bounds);
           
           if (result.success) {
@@ -173,12 +372,18 @@
             // Update UI
             startButton.style.display = 'none';
             stopButton.style.display = 'inline-block';
-            statusElement.textContent = 'Watching for changes...';
-            changeIndicatorElement.textContent = 'No changes detected';
+            statusElement.textContent = 'Monitoring red area only (controls excluded)...';
+            changeIndicatorElement.textContent = 'Watching monitoring area - no changes detected';
             changeIndicatorElement.className = 'change-indicator no-change';
             
-            // Start timer
-            timerInterval = setInterval(updateTimer, 1000);
+            // Start timer and bounds updating
+            timerInterval = setInterval(() => {
+              updateTimer();
+              updateBoundsDisplay(); // Update bounds every second
+            }, 1000);
+            
+            // Initial bounds display
+            updateBoundsDisplay();
             
             // Listen for screen changes
             window.electronAPI.onScreenChangeDetected((event, data) => {
@@ -186,6 +391,13 @@
                 changeCount++;
                 changeIndicatorElement.textContent = `Change detected! (${changeCount} total)`;
                 changeIndicatorElement.className = 'change-indicator change-detected';
+                
+                // Show change location indicator
+                window.electronAPI.getMonitoringAreaBounds().then(bounds => {
+                  if (bounds) {
+                    showChangeLocation(bounds);
+                  }
+                });
                 
                 // Reset to no-change after 2 seconds
                 setTimeout(() => {
@@ -238,6 +450,26 @@
           console.error('Error stopping watching:', error);
           statusElement.textContent = 'Error stopping screen watching';
         }
+      });
+
+      // Initialize bounds display on load
+      window.addEventListener('DOMContentLoaded', () => {
+        updateBoundsDisplay();
+        // Update bounds when window is moved or resized
+        let boundsUpdateTimeout;
+        const debouncedBoundsUpdate = () => {
+          clearTimeout(boundsUpdateTimeout);
+          boundsUpdateTimeout = setTimeout(updateBoundsDisplay, 100);
+        };
+        
+        // Listen for window move/resize events
+        window.addEventListener('resize', debouncedBoundsUpdate);
+        // Update bounds periodically when not monitoring
+        setInterval(() => {
+          if (!isWatching) {
+            updateBoundsDisplay();
+          }
+        }, 500);
       });
 
       // Clean up when window closes
