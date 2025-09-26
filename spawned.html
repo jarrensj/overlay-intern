@@ -78,8 +78,10 @@
         padding: 10px;
         border-top: 2px solid rgba(255, 255, 255, 0.3);
         -webkit-app-region: no-drag;
-        min-height: 120px;
+        height: 180px;
+        overflow-y: auto;
         position: relative;
+        flex-shrink: 0;
       }
       
       button {
@@ -134,16 +136,11 @@
       }
 
       .text-log-container {
-        position: absolute;
-        bottom: 100%;
-        left: 0;
-        right: 0;
-        margin-bottom: 5px;
+        margin-top: 10px;
         background: rgba(0, 0, 0, 0.95);
         border: 1px solid rgba(255, 255, 255, 0.3);
         border-radius: 5px;
         padding: 8px;
-        z-index: 1000;
       }
 
       .text-log {
@@ -176,6 +173,24 @@
       }
 
       .text-log::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .control-panel::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .control-panel::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+      }
+
+      .control-panel::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+      }
+
+      .control-panel::-webkit-scrollbar-thumb:hover {
         background: rgba(255, 255, 255, 0.5);
       }
 
@@ -284,7 +299,7 @@
       <div class="change-indicator" id="change-indicator">No changes detected</div>
       
       <!-- Text Log Container -->
-      <div class="text-log-container" id="text-log-container" style="display: none;">
+      <div class="text-log-container" id="text-log-container" style="display: block;">
         <div class="text-log-header">Detected Text Log</div>
         <div class="text-log" id="text-log"></div>
       </div>
@@ -325,11 +340,6 @@
       // Add text entry to the log
       function addTextLogEntry(foundWords, detectedText) {
         if (!textLogElement || !foundWords.length) return;
-        
-        // Show the text log container if it's hidden
-        if (textLogContainer.style.display === 'none') {
-          textLogContainer.style.display = 'block';
-        }
         
         const timestamp = new Date().toLocaleTimeString();
         const entry = document.createElement('div');
@@ -477,12 +487,6 @@
             }, 2000);
           }
           
-          // Show/hide text log container based on text detection setting
-          if (enabled) {
-            textLogContainer.style.display = textLogElement.children.length > 0 ? 'block' : 'none';
-          } else {
-            textLogContainer.style.display = 'none';
-          }
         } catch (error) {
           console.error('Error saving text detection settings:', error);
         }
@@ -756,6 +760,7 @@
         if (settings.enabled) {
           await initializeOCR();
         }
+        
         // Update bounds when window is moved or resized
         let boundsUpdateTimeout;
         const debouncedBoundsUpdate = () => {

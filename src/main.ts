@@ -334,10 +334,10 @@ ipcMain.handle('start-watching', async (event, bounds) => {
                     if (controlPanel && controlPanel.offsetHeight > 0) {
                       return controlPanel.offsetHeight;
                     }
-                    return 142; // Default fallback height
+                    return 180; // Default fallback height
                   } catch (e) {
                     console.error('Error in control panel height script:', e);
-                    return 142;
+                    return 180;
                   }
                 })();
               `);
@@ -354,7 +354,7 @@ ipcMain.handle('start-watching', async (event, bounds) => {
           } catch (error) {
             console.error('Error getting control panel height during interval, using fallback:', error);
             // Fallback to hardcoded height - calculate monitoring area properly
-            const fallbackControlHeight = 142; // Based on your initial calculation
+            const fallbackControlHeight = 180; // Based on fixed CSS height
             currentBounds = {
               x: windowBounds.x,
               y: windowBounds.y,
@@ -470,10 +470,10 @@ ipcMain.handle('get-monitoring-area-bounds', async (event) => {
               if (controlPanel && controlPanel.offsetHeight > 0) {
                 return controlPanel.offsetHeight;
               }
-              return 142; // Default fallback height
+              return 180; // Default fallback height
             } catch (e) {
               console.error('Error in control panel height script:', e);
-              return 142;
+              return 180;
             }
           })();
         `);
@@ -492,7 +492,7 @@ ipcMain.handle('get-monitoring-area-bounds', async (event) => {
     } catch (error) {
       console.error('Error getting control panel height, using fallback:', error);
       // Fallback to hardcoded height - calculate monitoring area properly
-      const fallbackControlHeight = 142;
+      const fallbackControlHeight = 180;
       const monitoringBounds = {
         x: windowBounds.x,
         y: windowBounds.y,
