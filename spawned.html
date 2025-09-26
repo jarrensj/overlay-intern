@@ -23,12 +23,57 @@
         border-radius: 5px;
         cursor: pointer;
         font-size: 14px;
-        margin-top: 10px;
+        margin: 5px;
         -webkit-app-region: no-drag;
       }
       
       button:hover {
         background: rgba(255, 0, 0, 1);
+      }
+
+      button:disabled {
+        background: rgba(128, 128, 128, 0.5);
+        cursor: not-allowed;
+      }
+
+      button.stop {
+        background: rgba(255, 165, 0, 0.8);
+      }
+
+      button.stop:hover {
+        background: rgba(255, 165, 0, 1);
+      }
+
+      .timer {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 10px 0;
+        color: #00ff00;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+      }
+
+      .status {
+        font-size: 12px;
+        margin: 5px 0;
+        color: #ffff00;
+      }
+
+      .change-indicator {
+        font-size: 12px;
+        margin: 5px 0;
+        padding: 5px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      .change-detected {
+        color: #ff4444;
+        background: rgba(255, 68, 68, 0.2);
+      }
+
+      .no-change {
+        color: #44ff44;
+        background: rgba(68, 255, 68, 0.2);
       }
       
     </style>
@@ -36,12 +81,171 @@
   <body>
     <h2>Watch Overlay</h2>
     <p>Drag this over the area you want to watch</p>
+    
+    <div class="timer" id="timer">00:00:00</div>
+    <div class="status" id="status">Ready to watch</div>
+    <div class="change-indicator" id="change-indicator">No changes detected</div>
+    
+    <button id="check-permissions" style="background: rgba(0, 100, 255, 0.8);">Check Permissions</button>
     <button id="start-watching">Start Watching</button>
+    <button id="stop-watching" class="stop" style="display: none;">Stop Watching</button>
     
     <script>
-      document.getElementById('start-watching').addEventListener('click', () => {
-        alert('work in progress');
-        // Add your watching logic here
+      let isWatching = false;
+      let startTime = null;
+      let timerInterval = null;
+      let changeCount = 0;
+
+      const checkPermissionsButton = document.getElementById('check-permissions');
+      const startButton = document.getElementById('start-watching');
+      const stopButton = document.getElementById('stop-watching');
+      const timerElement = document.getElementById('timer');
+      const statusElement = document.getElementById('status');
+      const changeIndicatorElement = document.getElementById('change-indicator');
+
+      // Format time as HH:MM:SS
+      function formatTime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+
+      // Update timer display
+      function updateTimer() {
+        if (startTime) {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          timerElement.textContent = formatTime(elapsed);
+        }
+      }
+
+      // Check permissions
+      checkPermissionsButton.addEventListener('click', async () => {
+        try {
+          statusElement.textContent = 'Checking screen capture permissions...';
+          const result = await window.electronAPI.checkScreenPermissions();
+          
+          if (result.hasPermission) {
+            statusElement.textContent = 'Screen capture permissions: ✅ Granted';
+            changeIndicatorElement.textContent = 'Ready to start watching';
+            changeIndicatorElement.className = 'change-indicator no-change';
+          } else {
+            statusElement.textContent = 'Screen capture permissions: ❌ Not granted';
+            changeIndicatorElement.textContent = 'Please grant permission in System Preferences';
+            changeIndicatorElement.className = 'change-indicator change-detected';
+          }
+        } catch (error) {
+          console.error('Error checking permissions:', error);
+          statusElement.textContent = 'Error checking permissions';
+        }
+      });
+
+      // Start watching
+      startButton.addEventListener('click', async () => {
+        if (isWatching) return;
+
+        try {
+          // Check screen capture permissions first
+          statusElement.textContent = 'Checking permissions...';
+          const permissionResult = await window.electronAPI.checkScreenPermissions();
+          
+          if (!permissionResult.hasPermission) {
+            statusElement.textContent = 'Screen capture permission required. Please grant permission in System Preferences > Security & Privacy > Privacy > Screen Recording';
+            return;
+          }
+
+          // Get current overlay bounds
+          statusElement.textContent = 'Getting overlay bounds...';
+          const bounds = await window.electronAPI.getOverlayBounds();
+          if (!bounds) {
+            statusElement.textContent = 'Error: Could not get overlay bounds';
+            return;
+          }
+
+          statusElement.textContent = 'Starting screen capture...';
+          const result = await window.electronAPI.startWatching(bounds);
+          
+          if (result.success) {
+            isWatching = true;
+            startTime = Date.now();
+            changeCount = 0;
+            
+            // Update UI
+            startButton.style.display = 'none';
+            stopButton.style.display = 'inline-block';
+            statusElement.textContent = 'Watching for changes...';
+            changeIndicatorElement.textContent = 'No changes detected';
+            changeIndicatorElement.className = 'change-indicator no-change';
+            
+            // Start timer
+            timerInterval = setInterval(updateTimer, 1000);
+            
+            // Listen for screen changes
+            window.electronAPI.onScreenChangeDetected((event, data) => {
+              if (data.hasChanged) {
+                changeCount++;
+                changeIndicatorElement.textContent = `Change detected! (${changeCount} total)`;
+                changeIndicatorElement.className = 'change-indicator change-detected';
+                
+                // Reset to no-change after 2 seconds
+                setTimeout(() => {
+                  changeIndicatorElement.textContent = `Monitoring... (${changeCount} changes detected)`;
+                  changeIndicatorElement.className = 'change-indicator no-change';
+                }, 2000);
+              }
+            });
+            
+          } else {
+            statusElement.textContent = `Error: ${result.message}`;
+          }
+        } catch (error) {
+          console.error('Error starting watching:', error);
+          statusElement.textContent = 'Error starting screen watching';
+        }
+      });
+
+      // Stop watching
+      stopButton.addEventListener('click', async () => {
+        if (!isWatching) return;
+
+        try {
+          const result = await window.electronAPI.stopWatching();
+          
+          if (result.success) {
+            isWatching = false;
+            startTime = null;
+            
+            // Update UI
+            startButton.style.display = 'inline-block';
+            stopButton.style.display = 'none';
+            statusElement.textContent = `Stopped. Detected ${changeCount} changes total.`;
+            changeIndicatorElement.textContent = 'Ready to watch';
+            changeIndicatorElement.className = 'change-indicator';
+            
+            // Stop timer
+            if (timerInterval) {
+              clearInterval(timerInterval);
+              timerInterval = null;
+            }
+            
+            // Remove screen change listener
+            window.electronAPI.removeScreenChangeListener();
+            
+          } else {
+            statusElement.textContent = `Error: ${result.message}`;
+          }
+        } catch (error) {
+          console.error('Error stopping watching:', error);
+          statusElement.textContent = 'Error stopping screen watching';
+        }
+      });
+
+      // Clean up when window closes
+      window.addEventListener('beforeunload', () => {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+        }
+        window.electronAPI.removeScreenChangeListener();
       });
     </script>
   </body>
