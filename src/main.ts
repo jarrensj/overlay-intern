@@ -44,10 +44,11 @@ const createOverlayWindow = () => {
   overlayWindow = new BrowserWindow({
     width: 300,
     height: 200,
-    opacity: 0.7,
+    opacity: 0.6,
     alwaysOnTop: true,
     frame: true,
     resizable: true,
+    minimizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
