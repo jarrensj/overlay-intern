@@ -187,14 +187,29 @@
         </div>
       </div>
       
+      <div class="control-row">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="display: flex; align-items: center; gap: 5px; font-size: 12px;">
+            <input type="checkbox" id="text-detection-enabled" style="margin: 0;">
+            Text Detection
+          </label>
+          <input type="text" id="watch-words" placeholder="Enter words to watch (comma-separated)" 
+                 style="flex: 1; padding: 4px; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 3px;">
+        </div>
+      </div>
+      
       <div class="change-indicator" id="change-indicator">No changes detected</div>
     </div>
     
+    <script src="https://unpkg.com/tesseract.js@v5.0.0/dist/tesseract.min.js"></script>
     <script>
       let isWatching = false;
       let startTime = null;
       let timerInterval = null;
       let changeCount = 0;
+      
+      // OCR worker for text detection
+      let ocrWorker = null;
 
       const checkPermissionsButton = document.getElementById('check-permissions');
       const debugCaptureButton = document.getElementById('debug-capture');
@@ -205,6 +220,8 @@
       const changeIndicatorElement = document.getElementById('change-indicator');
       const boundsDisplayElement = document.getElementById('bounds-display');
       const monitoringAreaElement = document.getElementById('monitoring-area');
+      const textDetectionEnabledElement = document.getElementById('text-detection-enabled');
+      const watchWordsElement = document.getElementById('watch-words');
 
       // Format time as HH:MM:SS
       function formatTime(seconds) {
@@ -268,6 +285,87 @@
           }
         }, 3000);
       }
+
+      // Initialize OCR worker
+      async function initializeOCR() {
+        if (!ocrWorker) {
+          try {
+            ocrWorker = await Tesseract.createWorker('eng');
+            await ocrWorker.setParameters({
+              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?-',
+            });
+          } catch (error) {
+            console.error('Error initializing OCR worker:', error);
+          }
+        }
+      }
+
+      // Detect text in screenshot
+      async function detectTextInScreenshot(screenshot, watchWords) {
+        if (!ocrWorker || !watchWords || watchWords.length === 0) {
+          return { text: '', foundWords: [] };
+        }
+
+        try {
+          // Perform OCR
+          const { data: { text } } = await ocrWorker.recognize(screenshot);
+          
+          // Check for watched words (case-insensitive)
+          const foundWords = [];
+          const lowerText = text.toLowerCase();
+          
+          for (const word of watchWords) {
+            if (lowerText.includes(word.toLowerCase())) {
+              foundWords.push(word);
+            }
+          }
+          
+          return { text: text.trim(), foundWords };
+        } catch (error) {
+          console.error('Error during OCR processing:', error);
+          return { text: '', foundWords: [] };
+        }
+      }
+
+      // Load and save text detection settings
+      async function loadTextDetectionSettings() {
+        try {
+          const settings = await window.electronAPI.getTextDetectionSettings();
+          textDetectionEnabledElement.checked = settings.enabled;
+          watchWordsElement.value = settings.words.join(', ');
+        } catch (error) {
+          console.error('Error loading text detection settings:', error);
+        }
+      }
+
+      async function saveTextDetectionSettings() {
+        try {
+          const enabled = textDetectionEnabledElement.checked;
+          const words = watchWordsElement.value.split(',').map(w => w.trim()).filter(w => w.length > 0);
+          await window.electronAPI.setTextDetection(enabled, words);
+          
+          // Initialize OCR worker if enabled
+          if (enabled && !ocrWorker) {
+            statusElement.textContent = 'Initializing text detection...';
+            await initializeOCR();
+            statusElement.textContent = 'Text detection ready';
+            setTimeout(() => {
+              statusElement.textContent = 'Position red area over target to monitor';
+            }, 2000);
+          }
+        } catch (error) {
+          console.error('Error saving text detection settings:', error);
+        }
+      }
+
+      // Text detection event handlers
+      textDetectionEnabledElement.addEventListener('change', saveTextDetectionSettings);
+      watchWordsElement.addEventListener('blur', saveTextDetectionSettings);
+      watchWordsElement.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          saveTextDetectionSettings();
+        }
+      });
 
       // Check permissions
       checkPermissionsButton.addEventListener('click', async () => {
@@ -386,24 +484,63 @@
             updateBoundsDisplay();
             
             // Listen for screen changes
-            window.electronAPI.onScreenChangeDetected((event, data) => {
+            window.electronAPI.onScreenChangeDetected(async (event, data) => {
               if (data.hasChanged) {
                 changeCount++;
-                changeIndicatorElement.textContent = `Change detected! (${changeCount} total)`;
-                changeIndicatorElement.className = 'change-indicator change-detected';
                 
-                // Show change location indicator
-                window.electronAPI.getMonitoringAreaBounds().then(bounds => {
-                  if (bounds) {
-                    showChangeLocation(bounds);
-                  }
-                });
+                // Perform text detection if enabled and screenshot is provided
+                let textDetectionResult = { text: '', foundWords: [] };
+                if (data.textDetectionEnabled && data.screenshot && data.watchWords && data.watchWords.length > 0) {
+                  textDetectionResult = await detectTextInScreenshot(data.screenshot, data.watchWords);
+                }
                 
-                // Reset to no-change after 2 seconds
+                // Check for text detection results
+                let changeText = `Change detected! (${changeCount} total)`;
+                if (textDetectionResult.foundWords.length > 0) {
+                  changeText = `TEXT FOUND: "${textDetectionResult.foundWords.join(', ')}" (${changeCount} total)`;
+                  changeIndicatorElement.className = 'change-indicator change-detected';
+                  
+                  // Show text found indicator
+                  window.electronAPI.getMonitoringAreaBounds().then(bounds => {
+                    if (bounds) {
+                      const indicator = document.createElement('div');
+                      indicator.className = 'change-location';
+                      indicator.innerHTML = `TEXT FOUND<br>${textDetectionResult.foundWords.join(', ')}`;
+                      indicator.style.position = 'absolute';
+                      indicator.style.right = '10px';
+                      indicator.style.top = '50%';
+                      indicator.style.transform = 'translateY(-50%)';
+                      indicator.style.zIndex = '1000';
+                      indicator.style.background = 'rgba(0, 255, 0, 0.8)'; // Green for text detection
+                      
+                      changeIndicatorElement.parentElement.style.position = 'relative';
+                      changeIndicatorElement.parentElement.appendChild(indicator);
+                      
+                      setTimeout(() => {
+                        if (indicator.parentNode) {
+                          indicator.remove();
+                        }
+                      }, 5000); // Show longer for text detection
+                    }
+                  });
+                } else {
+                  changeIndicatorElement.className = 'change-indicator change-detected';
+                  
+                  // Show regular change location indicator
+                  window.electronAPI.getMonitoringAreaBounds().then(bounds => {
+                    if (bounds) {
+                      showChangeLocation(bounds);
+                    }
+                  });
+                }
+                
+                changeIndicatorElement.textContent = changeText;
+                
+                // Reset to no-change after 3 seconds (longer for text detection)
                 setTimeout(() => {
                   changeIndicatorElement.textContent = `Monitoring... (${changeCount} changes detected)`;
                   changeIndicatorElement.className = 'change-indicator no-change';
-                }, 2000);
+                }, 3000);
               }
             });
 
@@ -477,8 +614,15 @@
       });
 
       // Initialize bounds display on load
-      window.addEventListener('DOMContentLoaded', () => {
+      window.addEventListener('DOMContentLoaded', async () => {
         updateBoundsDisplay();
+        await loadTextDetectionSettings();
+        
+        // Initialize OCR if text detection is enabled
+        const settings = await window.electronAPI.getTextDetectionSettings();
+        if (settings.enabled) {
+          await initializeOCR();
+        }
         // Update bounds when window is moved or resized
         let boundsUpdateTimeout;
         const debouncedBoundsUpdate = () => {

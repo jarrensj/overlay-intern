@@ -25,5 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   removeMonitoringAutoStoppedListener: () => {
     ipcRenderer.removeAllListeners('monitoring-auto-stopped');
-  }
+  },
+  setTextDetection: (enabled: boolean, words: string[]) => ipcRenderer.invoke('set-text-detection', enabled, words),
+  getTextDetectionSettings: () => ipcRenderer.invoke('get-text-detection-settings')
 });

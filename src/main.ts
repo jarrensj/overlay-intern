@@ -10,6 +10,10 @@ let isWatching = false;
 let watchingInterval: NodeJS.Timeout | null = null;
 let baselineScreenshot: string | null = null;
 
+// Text detection state
+let textDetectionEnabled = false;
+let watchWords: string[] = [];
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
@@ -252,6 +256,7 @@ const compareScreenshots = (screenshot1: string, screenshot2: string): boolean =
   return true;
 };
 
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -368,7 +373,10 @@ ipcMain.handle('start-watching', async (event, bounds) => {
             overlayWindow.webContents.send('screen-change-detected', {
               hasChanged,
               timestamp: new Date().toISOString(),
-              bounds: currentBounds // Include the monitoring bounds
+              bounds: currentBounds,
+              screenshot: textDetectionEnabled && hasChanged ? currentScreenshot : null,
+              textDetectionEnabled,
+              watchWords
             });
           }
           
@@ -495,4 +503,16 @@ ipcMain.handle('get-monitoring-area-bounds', async (event) => {
     }
   }
   return null;
+});
+
+// Text detection IPC handlers
+ipcMain.handle('set-text-detection', async (event, enabled: boolean, words: string[]) => {
+  textDetectionEnabled = enabled;
+  watchWords = words.filter(word => word.trim().length > 0);
+  
+  return { success: true, enabled: textDetectionEnabled, words: watchWords };
+});
+
+ipcMain.handle('get-text-detection-settings', () => {
+  return { enabled: textDetectionEnabled, words: watchWords };
 });
